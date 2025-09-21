@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resume Parser</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0E0816;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 1rem;
+        }
+        .container {
+            background-color: #1A112B;
+            border-radius: 1rem;
+            padding: 2rem;
+            max-width: 50rem;
+            width: 100%;
+            border: 2px solid;
+            border-image: linear-gradient(to bottom right, #9B5DE5, #A948C9) 1;
+        }
+        .drag-drop-area {
+            border: 2px dashed #9B5DE5;
+            border-radius: 0.5rem;
+            padding: 2rem;
+            text-align: center;
+            cursor: pointer;
+            margin-bottom: 1rem;
+            transition: background-color 0.2s;
+        }
+        .drag-drop-area:hover {
+            background-color: rgba(155, 93, 229, 0.1);
+        }
+        textarea {
+            width: 100%;
+            height: 10rem;
+            background-color: #1A112B;
+            border: 2px solid #9B5DE5;
+            border-radius: 0.5rem;
+            padding: 0.75rem;
+            margin-bottom: 1rem;
+            color: white;
+            resize: vertical;
+        }
+        .button {
+            background: linear-gradient(to right, #9B5DE5, #A948C9);
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            transition: transform 0.2s;
+        }
+        .button:hover {
+            transform: scale(1.05);
+        }
+        .result-box {
+            background-color: #1A112B;
+            border: 2px solid #9B5DE5;
+            border-radius: 0.5rem;
+            padding: 1.5rem;
+            margin-top: 1.5rem;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-3xl font-bold text-center mb-6">Resume Parser</h1>
+        <div id="drag-drop-area" class="drag-drop-area">
+            <p>Drag & Drop a .txt or .pdf file here</p>
+            <input type="file" id="fileInput" accept=".txt,.pdf" class="hidden">
+        </div>
+        <div class="flex items-center my-4">
+            <div class="flex-grow border-t border-purple-500"></div>
+            <span class="flex-shrink mx-4 text-gray-400">or paste text below</span>
+            <div class="flex-grow border-t border-purple-500"></div>
+        </div>
+        <textarea id="resumeTextarea" placeholder="Paste your resume text here..."></textarea>
+        <div class="text-center">
+            <button id="parseButton" class="button">Parse Resume</button>
+        </div>
+        <div id="loadingIndicator" class="hidden text-center mt-4">
+            <svg class="animate-spin h-5 w-5 text-purple-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+        </div>
+        <div id="result" class="result-box hidden">
+            <div class="text-xl font-bold mb-2">Extracted Content:</div>
+            <div id="fullTextOutput" class="text-sm text-gray-300 mb-4"></div>
+            <div class="text-xl font-bold mb-2">Extracted Skills:</div>
+            <ul id="skillsList" class="list-disc list-inside text-gray-300"></ul>
+        </div>
+    </div>
+
+    <script>
+        const dragDropArea = document.getElementById('drag-drop-area');
+        const fileInput = document.getElementById('fileInput');
+        const resumeTextarea = document.getElementById('resumeTextarea');
+        const parseButton = document.getElementById('parseButton');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const resultDiv = document.getElementById('result');
+        const fullTextOutput = document.getElementById('fullTextOutput');
+        const skillsList = document.getElementById('skillsList');
+        const { getDocument } = pdfjsLib;
+
+        dragDropArea.addEventListener('click', () => fileInput.click());
+
+        dragDropArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dragDropArea.classList.add('border-purple-500');
+        });
+
+        dragDropArea.addEventListener('dragleave', () => {
+            dragDropArea.classList.remove('border-purple-500');
+        });
+
+        dragDropArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dragDropArea.classList.remove('border-purple-500');
+            const file = e.dataTransfer.files[0];
+            if (file) {
+                handleFile(file);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                handleFile(file);
+            }
+        });
+
+        async function handleFile(file) {
+            loadingIndicator.classList.remove('hidden');
+            resultDiv.classList.add('hidden');
+            resumeTextarea.value = '';
+
+            try {
+                if (file.type === 'text/plain') {
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        resumeTextarea.value = event.target.result;
+                        loadingIndicator.classList.add('hidden');
+                    };
+                    reader.readAsText(file);
+                } else if (file.type === 'application/pdf') {
+                    const reader = new FileReader();
+                    reader.onload = async (event) => {
+                        const pdfData = new Uint8Array(event.target.result);
+                        const loadingTask = getDocument({ data: pdfData });
+                        const pdf = await loadingTask.promise;
+                        let fullText = '';
+                        for (let i = 1; i <= pdf.numPages; i++) {
+                            const page = await pdf.getPage(i);
+                            const content = await page.getTextContent();
+                            fullText += content.items.map(item => item.str).join(' ');
+                        }
+                        resumeTextarea.value = fullText;
+                        loadingIndicator.classList.add('hidden');
+                    };
+                    reader.readAsArrayBuffer(file);
+                } else {
+                    resumeTextarea.value = 'Unsupported file type. Please upload a .txt or .pdf file.';
+                    loadingIndicator.classList.add('hidden');
+                }
+            } catch (error) {
+                resumeTextarea.value = `Error reading file: ${error.message}`;
+                loadingIndicator.classList.add('hidden');
+            }
+        }
+
+        parseButton.addEventListener('click', async () => {
+            const resumeContent = resumeTextarea.value.trim();
+            if (resumeContent === '') {
+                return;
+            }
+
+            loadingIndicator.classList.remove('hidden');
+            resultDiv.classList.add('hidden');
+
+            try {
+                const systemPrompt = "Extract all text and skills from the provided resume. The skills should be a list of technologies, tools, and professional abilities. Respond only with a JSON object containing the full text and a list of skills.";
+                const userQuery = `Resume text:\n\n${resumeContent}`;
+
+                const payload = {
+                    contents: [{ parts: [{ text: userQuery }] }],
+                    generationConfig: {
+                        responseMimeType: "application/json",
+                        responseSchema: {
+                            type: "OBJECT",
+                            properties: {
+                                "fullText": { "type": "STRING" },
+                                "skills": { "type": "ARRAY", "items": { "type": "STRING" } }
+                            },
+                            "propertyOrdering": ["fullText", "skills"]
+                        }
+                    },
+                    systemInstruction: {
+                        parts: [{ text: systemPrompt }]
+                    },
+                    model: "gemini-2.5-flash-preview-05-20"
+                };
+
+                const apiKey = "";
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+                let response;
+                let retries = 0;
+                const maxRetries = 5;
+                const baseDelay = 1000;
+
+                while (retries < maxRetries) {
+                    try {
+                        response = await fetch(apiUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+                        if (response.status !== 429) {
+                            break;
+                        }
+                        retries++;
+                        const delay = baseDelay * Math.pow(2, retries);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                    } catch (error) {
+                        retries++;
+                        const delay = baseDelay * Math.pow(2, retries);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                    }
+                }
+
+                if (!response.ok) {
+                    throw new Error(`API call failed with status: ${response.status}`);
+                }
+
+                const result = await response.json();
+                const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (jsonText) {
+                    const parsedData = JSON.parse(jsonText);
+                    fullTextOutput.textContent = parsedData.fullText;
+                    skillsList.innerHTML = '';
+                    if (parsedData.skills && Array.isArray(parsedData.skills)) {
+                        parsedData.skills.forEach(skill => {
+                            const li = document.createElement('li');
+                            li.textContent = skill;
+                            skillsList.appendChild(li);
+                        });
+                    }
+                } else {
+                    fullTextOutput.textContent = 'Failed to parse resume. No content received from API.';
+                    skillsList.innerHTML = '';
+                }
+
+                resultDiv.classList.remove('hidden');
+
+            } catch (error) {
+                fullTextOutput.textContent = `Error: ${error.message}`;
+                skillsList.innerHTML = '';
+                resultDiv.classList.remove('hidden');
+            } finally {
+                loadingIndicator.classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
